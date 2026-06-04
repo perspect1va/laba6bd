@@ -1,0 +1,82 @@
+CREATE DATABASE User_Actions;
+GO
+
+USE User_Actions;
+GO
+
+DROP TABLE User_Logs;
+GO
+
+CREATE PARTITION FUNCTION f_UserLogs (DATE)
+AS RANGE RIGHT FOR VALUES (
+    '2025-02-01', '2025-03-01', '2025-04-01', '2025-05-01', '2025-06-01',
+    '2025-07-01', '2025-08-01', '2025-09-01', '2025-10-01', '2025-11-01',
+    '2025-12-01', '2026-01-01'
+);
+GO
+
+CREATE PARTITION SCHEME s_UserLogs
+AS PARTITION pf_UserLogs_Monthly
+TO ([PRIMARY], [PRIMARY], [PRIMARY], [PRIMARY], [PRIMARY], [PRIMARY], 
+    [PRIMARY], [PRIMARY], [PRIMARY], [PRIMARY], [PRIMARY], [PRIMARY], [PRIMARY]);
+GO
+
+CREATE TABLE User_Logs (
+    id INT IDENTITY(1,1) NOT NULL,
+    username TEXT NOT NULL,
+    user_action TEXT NOT NULL,
+    action_date DATE NOT NULL,
+    action_time TIME NOT NULL,
+    action_result TEXT NOT NULL,
+    PRIMARY KEY (id, action_date)
+) ON s_UserLogs (action_date);
+GO
+
+SET NOCOUNT ON;
+
+WITH Tally AS (
+    SELECT TOP 1000000
+        rn = ROW_NUMBER() OVER (ORDER BY (SELECT NULL))
+    FROM (VALUES (1),(1),(1),(1),(1),(1),(1),(1),(1),(1)) v1(n)
+    CROSS JOIN (VALUES (1),(1),(1),(1),(1),(1),(1),(1),(1),(1)) v2(n)
+    CROSS JOIN (VALUES (1),(1),(1),(1),(1),(1),(1),(1),(1),(1)) v3(n)
+    CROSS JOIN (VALUES (1),(1),(1),(1),(1),(1),(1),(1),(1),(1)) v4(n)
+    CROSS JOIN (VALUES (1),(1),(1),(1),(1),(1),(1),(1),(1),(1)) v5(n)
+    CROSS JOIN (VALUES (1),(1),(1),(1),(1),(1),(1),(1),(1),(1)) v6(n)
+),
+Randomized AS (
+    SELECT
+        rn,
+        rand_val = ABS(CHECKSUM(NEWID()))
+    FROM Tally
+)
+INSERT INTO User_Logs WITH (TABLOCK) (username, user_action, action_date, action_time, action_result)
+SELECT
+    'user_' + RIGHT('00000' + CAST(rand_val % 100000 AS VARCHAR(5)), 5),
+    CASE rand_val % 8
+        WHEN 0 THEN 'LOGIN'      WHEN 1 THEN 'LOGOUT'
+        WHEN 2 THEN 'UPDATE'     WHEN 3 THEN 'DELETE'
+        WHEN 4 THEN 'VIEW'       WHEN 5 THEN 'CREATE'
+        WHEN 6 THEN 'EXPORT'     WHEN 7 THEN 'IMPORT'
+    END,
+    DATEADD(DAY, rand_val % 365, '2025-01-01'),
+    DATEADD(SECOND, rand_val % 86400, CAST('00:00:00' AS TIME)),
+    CASE rand_val % 5
+        WHEN 0 THEN 'SUCCESS'        WHEN 1 THEN 'FAILED'
+        WHEN 2 THEN 'PENDING'        WHEN 3 THEN 'TIMEOUT'
+        WHEN 4 THEN 'ACCESS_DENIED'
+    END
+FROM Randomized;
+GO
+
+SELECT * FROM User_Logs;
+GO
+
+
+-- Посмотреть количество записей по месяцам
+SELECT 
+    $PARTITION.f_UserLogs(action_date) AS Секция,
+    COUNT(*) AS Строк
+FROM User_Logs
+GROUP BY $PARTITION.f_UserLogs(action_date)
+ORDER BY Секция;
