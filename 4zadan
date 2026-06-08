@@ -1,54 +1,20 @@
-USE master;
-GO
-
-CREATE OR ALTER PROCEDURE sp_RestoreFromBackup
-    @BackupFolderPath NVARCHAR(500)
+CREATE PROCEDURE use_backup @Path VARCHAR(1000)
 AS
 BEGIN
-    SET NOCOUNT ON;
-    
-    DECLARE @BackupFile NVARCHAR(500)
-    DECLARE @SqlCommand NVARCHAR(MAX)
-    
-    DECLARE backup_cursor CURSOR FOR
-    SELECT @BackupFolderPath + '\' + name
-    FROM (
-        VALUES 
-            ('User_Actions_FULL_20250608.bak'),
-            ('User_Actions_DIFF_20250608.bak'),
-            ('User_Actions_LOG_20250608.bak')
-    ) AS files(name)
-    
-    OPEN backup_cursor
-    FETCH NEXT FROM backup_cursor INTO @BackupFile
-    
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-        IF EXISTS (SELECT 1 FROM sys.databases WHERE name = 'User_Actions')
-        BEGIN
-            SET @SqlCommand = '
-                ALTER DATABASE User_Actions SET SINGLE_USER WITH ROLLBACK IMMEDIATE
-                RESTORE DATABASE User_Actions FROM DISK = ''' + @BackupFile + ''' WITH REPLACE
-                ALTER DATABASE User_Actions SET MULTI_USER'
-        END
-        ELSE
-        BEGIN
-            SET @SqlCommand = '
-                RESTORE DATABASE User_Actions FROM DISK = ''' + @BackupFile + ''''
-        END
-        
-        EXEC sp_executesql @SqlCommand
-        PRINT 'Restored from: ' + @BackupFile
-        
-        FETCH NEXT FROM backup_cursor INTO @BackupFile
-    END
-    
-    CLOSE backup_cursor
-    DEALLOCATE backup_cursor
-    
-    PRINT 'Restore completed successfully'
+    RESTORE DATABASE User_Actions
+    FROM DISK = @Path
+    WITH REPLACE
 END
 GO
 
--- Пример использования:
--- EXEC sp_RestoreFromBackup 'C:\Backups\User_Actions'
+EXEC use_backup 'C:\sql\User_Actions.bak'
+
+
+USE User_Actions
+GO
+
+SELECT COUNT(*) FROM User_Logs
+GO
+
+SELECT TOP 10 * FROM User_Logs
+GO
